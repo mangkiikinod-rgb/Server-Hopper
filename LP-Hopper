@@ -1,0 +1,285 @@
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local LocalPlayer = Players.LocalPlayer
+
+local PLACE_ID = game.PlaceId
+local JOB_ID = game.JobId
+
+local function createUI()
+    local existingUI = game.CoreGui:FindFirstChild("ServerHopperGui")
+    if existingUI then existingUI:Destroy() end
+
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "ServerHopperGui"
+    ScreenGui.Parent = game.CoreGui
+
+    -- Made the UI slightly taller to fit the list nicely
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Size = UDim2.new(0, 340, 0, 260)
+    MainFrame.Position = UDim2.new(0.5, -170, 0.4, -130)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Parent = ScreenGui
+    Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
+
+    local CloseButton = Instance.new("TextButton")
+    CloseButton.Size = UDim2.new(0, 30, 0, 30)
+    CloseButton.Position = UDim2.new(1, -35, 0, 5)
+    CloseButton.BackgroundTransparency = 1
+    CloseButton.Text = "✕"
+    CloseButton.TextScaled = true
+    CloseButton.Font = Enum.Font.GothamBold
+    CloseButton.TextColor3 = Color3.fromRGB(220, 60, 60)
+    CloseButton.Parent = MainFrame
+    CloseButton.MouseButton1Click:Connect(function()
+        ScreenGui:Destroy()
+    end)
+
+    local Title = Instance.new("TextLabel")
+    Title.Size = UDim2.new(1, -40, 0, 40)
+    Title.Position = UDim2.new(0, 10, 0, 5)
+    Title.BackgroundTransparency = 1
+    Title.Text = "Choose Language | اختر لغتك"
+    Title.TextSize = 16
+    Title.Font = Enum.Font.GothamBold
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    Title.Parent = MainFrame
+
+    -- Container for main buttons (Arabic/English, Low/Random)
+    local ButtonContainer = Instance.new("Frame")
+    ButtonContainer.Size = UDim2.new(1, 0, 0.7, 0)
+    ButtonContainer.Position = UDim2.new(0, 0, 0.2, 0)
+    ButtonContainer.BackgroundTransparency = 1
+    ButtonContainer.Parent = MainFrame
+
+    -- Container for the Server List
+    local ListContainer = Instance.new("Frame")
+    ListContainer.Size = UDim2.new(1, 0, 0.7, 0)
+    ListContainer.Position = UDim2.new(0, 0, 0.2, 0)
+    ListContainer.BackgroundTransparency = 1
+    ListContainer.Visible = false
+    ListContainer.Parent = MainFrame
+
+    local ScrollingFrame = Instance.new("ScrollingFrame")
+    ScrollingFrame.Size = UDim2.new(0.9, 0, 0.8, 0)
+    ScrollingFrame.Position = UDim2.new(0.05, 0, 0, 0)
+    ScrollingFrame.BackgroundTransparency = 1
+    ScrollingFrame.ScrollBarThickness = 6
+    ScrollingFrame.Parent = ListContainer
+
+    local UIListLayout = Instance.new("UIListLayout")
+    UIListLayout.Padding = UDim.new(0, 5)
+    UIListLayout.Parent = ScrollingFrame
+
+    local BackButton = Instance.new("TextButton")
+    BackButton.Size = UDim2.new(0.9, 0, 0, 30)
+    BackButton.Position = UDim2.new(0.05, 0, 0.85, 0)
+    BackButton.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+    BackButton.Text = "Back / رجوع"
+    BackButton.TextSize = 14
+    BackButton.Font = Enum.Font.GothamBold
+    BackButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    BackButton.Parent = ListContainer
+    Instance.new("UICorner", BackButton).CornerRadius = UDim.new(0, 6)
+
+    local LoadingLabel = Instance.new("TextLabel")
+    LoadingLabel.Size = UDim2.new(1, -20, 0, 20)
+    LoadingLabel.Position = UDim2.new(0, 10, 0.9, 0)
+    LoadingLabel.BackgroundTransparency = 1
+    LoadingLabel.Text = ""
+    LoadingLabel.TextSize = 13
+    LoadingLabel.Font = Enum.Font.GothamMedium
+    LoadingLabel.TextColor3 = Color3.fromRGB(240, 200, 80)
+    LoadingLabel.Parent = MainFrame
+
+    local Option1Btn = Instance.new("TextButton")
+    Option1Btn.Size = UDim2.new(0.9, 0, 0, 42)
+    Option1Btn.Position = UDim2.new(0.05, 0, 0.1, 0)
+    Option1Btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+    Option1Btn.Font = Enum.Font.GothamBold
+    Option1Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Option1Btn.TextSize = 16
+    Option1Btn.Parent = ButtonContainer
+    Instance.new("UICorner", Option1Btn).CornerRadius = UDim.new(0, 6)
+
+    local Option2Btn = Instance.new("TextButton")
+    Option2Btn.Size = UDim2.new(0.9, 0, 0, 42)
+    Option2Btn.Position = UDim2.new(0.05, 0, 0.4, 0)
+    Option2Btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+    Option2Btn.Font = Enum.Font.GothamBold
+    Option2Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Option2Btn.TextSize = 16
+    Option2Btn.Parent = ButtonContainer
+    Instance.new("UICorner", Option2Btn).CornerRadius = UDim.new(0, 6)
+
+    Option1Btn.Text = "العربية"
+    Option2Btn.Text = "English"
+
+    local isFetching = false
+
+    local function fetchServers(cursor)
+        local url = string.format(
+            "https://games.roblox.com/v1/games/%s/servers/Public?sortOrder=Asc&limit=100%s",
+            tostring(PLACE_ID),
+            cursor and ("&cursor=" .. cursor) or ""
+        )
+
+        local success, response = pcall(function() return game:HttpGet(url) end)
+
+        if success then
+            if string.find(response, "429") or string.find(response, "Too Many Requests") then
+                return nil, "429"
+            end
+            local decoded = HttpService:JSONDecode(response)
+            return decoded.data or {}, decoded.nextPageCursor
+        end
+        return nil, "Error"
+    end
+
+    local function teleportToServer(serverInfo, lang)
+        LoadingLabel.Text = (lang == "Arabic" and "جاري الاتصال... (اللاعبين: " or "Teleporting... (Players: ") .. tostring(serverInfo.playing) .. ")"
+        
+        local success = pcall(function()
+            TeleportService:TeleportToPlaceInstance(PLACE_ID, serverInfo.id, LocalPlayer)
+        end)
+
+        if not success then
+            LoadingLabel.Text = lang == "Arabic" and "فشل الاتصال!" or "Teleport failed!"
+        end
+    end
+
+    local function loadServerList(lang)
+        if isFetching then return end
+        isFetching = true
+        
+        LoadingLabel.Text = lang == "Arabic" and "جاري البحث عن السيرفرات..." or "Finding servers..."
+        
+        -- Clear old items
+        for _, child in ipairs(ScrollingFrame:GetChildren()) do
+            if child:IsA("TextButton") then child:Destroy() end
+        end
+
+        local cursor = nil
+        local foundServers = {}
+        
+        -- Fetch up to 4 pages to find populated but low servers
+        for i = 1, 4 do 
+            local servers, nextCursor = fetchServers(cursor)
+            
+            if nextCursor == "429" then
+                LoadingLabel.Text = lang == "Arabic" and "تم الحظر مؤقتاً! انتظر..." or "Rate Limited! Waiting..."
+                task.wait(2.5)
+                continue
+            elseif not servers then
+                break
+            end
+
+            for _, server in ipairs(servers) do
+                if server.id ~= JOB_ID and server.playing > 0 and server.playing < server.maxPlayers then
+                    table.insert(foundServers, server)
+                end
+            end
+
+            if #foundServers >= 15 then break end -- Stop when we have 15 good servers
+            
+            cursor = nextCursor
+            if not cursor then break end
+            task.wait(1.5)
+        end
+
+        -- Ensure they are sorted from lowest to highest
+        table.sort(foundServers, function(a, b) return a.playing < b.playing end)
+
+        if #foundServers == 0 then
+            LoadingLabel.Text = lang == "Arabic" and "لم يتم العثور على سيرفرات!" or "No servers found!"
+            isFetching = false
+            return
+        end
+
+        -- Build UI List
+        for index, server in ipairs(foundServers) do
+            local ServerBtn = Instance.new("TextButton")
+            ServerBtn.Size = UDim2.new(1, -10, 0, 35)
+            ServerBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+            ServerBtn.Text = string.format("%s %d/%d", lang == "Arabic" and "اللاعبين:" or "Players:", server.playing, server.maxPlayers)
+            ServerBtn.TextSize = 14
+            ServerBtn.Font = Enum.Font.GothamMedium
+            ServerBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
+            ServerBtn.Parent = ScrollingFrame
+            Instance.new("UICorner", ServerBtn).CornerRadius = UDim.new(0, 4)
+
+            ServerBtn.MouseButton1Click:Connect(function()
+                teleportToServer(server, lang)
+            end)
+        end
+
+        ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, #foundServers * 40)
+        LoadingLabel.Text = lang == "Arabic" and "اختر سيرفر من القائمة" or "Choose a server from the list"
+        
+        ButtonContainer.Visible = false
+        ListContainer.Visible = true
+        isFetching = false
+    end
+
+    local function showServerButtons(language)
+        Title.Text = language == "Arabic" and "اختر نوع السيرفر" or "Choose Server Type"
+        
+        Option1Btn.BackgroundColor3 = Color3.fromRGB(40, 110, 60)
+        Option1Btn.Text = language == "Arabic" and "قائمة السيرفرات (لاعبين أقل)" or "Low Server List"
+        
+        Option2Btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+        Option2Btn.Text = language == "Arabic" and "سيرفر عشوائي" or "Random Server"
+
+        -- Clear old connections
+        local newOpt1 = Option1Btn:Clone()
+        Option1Btn:Destroy()
+        Option1Btn = newOpt1
+        Option1Btn.Parent = ButtonContainer
+
+        local newOpt2 = Option2Btn:Clone()
+        Option2Btn:Destroy()
+        Option2Btn = newOpt2
+        Option2Btn.Parent = ButtonContainer
+
+        Option1Btn.MouseButton1Click:Connect(function()
+            loadServerList(language)
+        end)
+
+        Option2Btn.MouseButton1Click:Connect(function()
+            if isFetching then return end
+            isFetching = true
+            LoadingLabel.Text = language == "Arabic" and "جلب سيرفر عشوائي..." or "Fetching random server..."
+            
+            local servers = fetchServers(nil)
+            local valid = {}
+            if servers then
+                for _, s in ipairs(servers) do
+                    if s.id ~= JOB_ID and s.playing > 0 and s.playing < s.maxPlayers then
+                        table.insert(valid, s)
+                    end
+                end
+            end
+
+            if #valid > 0 then
+                teleportToServer(valid[math.random(1, #valid)], language)
+            else
+                LoadingLabel.Text = language == "Arabic" and "لم يتم العثور على سيرفر!" or "No servers found!"
+            end
+            isFetching = false
+        end)
+    end
+
+    -- Language Setup
+    Option1Btn.MouseButton1Click:Connect(function() showServerButtons("Arabic") end)
+    Option2Btn.MouseButton1Click:Connect(function() showServerButtons("English") end)
+
+    BackButton.MouseButton1Click:Connect(function()
+        ListContainer.Visible = false
+        ButtonContainer.Visible = true
+        LoadingLabel.Text = ""
+    end)
+end
+
+createUI()
