@@ -1,12 +1,75 @@
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
+local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 local PLACE_ID = game.PlaceId
 local JOB_ID = game.JobId
 
-local function createUI()
+-- ==========================================
+-- 1. RGB Loading Screen ("Raii Scripts")
+-- ==========================================
+local function showLoadingScreen(callback)
+    local LoadGui = Instance.new("ScreenGui")
+    LoadGui.Name = "RaiiScriptsLoader"
+    LoadGui.Parent = game.CoreGui
+    LoadGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+    local Background = Instance.new("Frame")
+    Background.Size = UDim2.new(1, 0, 1, 0)
+    Background.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+    Background.BorderSizePixel = 0
+    Background.Parent = LoadGui
+
+    local RgbText = Instance.new("TextLabel")
+    RgbText.Size = UDim2.new(0, 400, 0, 100)
+    RgbText.Position = UDim2.new(0.5, -200, 0.5, -50)
+    RgbText.BackgroundTransparency = 1
+    RgbText.Text = "Raii Scripts"
+    RgbText.Font = Enum.Font.GothamBlack
+    RgbText.TextSize = 50
+    RgbText.Parent = Background
+
+    local LoadingSub = Instance.new("TextLabel")
+    LoadingSub.Size = UDim2.new(0, 400, 0, 30)
+    LoadingSub.Position = UDim2.new(0.5, -200, 0.5, 30)
+    LoadingSub.BackgroundTransparency = 1
+    LoadingSub.Text = "Loading Server Hopper..."
+    LoadingSub.TextColor3 = Color3.fromRGB(150, 150, 150)
+    LoadingSub.Font = Enum.Font.GothamMedium
+    LoadingSub.TextSize = 18
+    LoadingSub.Parent = Background
+
+    -- RGB Animation Loop
+    local connection
+    connection = RunService.RenderStepped:Connect(function()
+        -- Smoothly cycles through RGB colors using tick()
+        RgbText.TextColor3 = Color3.fromHSV(tick() % 3 / 3, 1, 1)
+    end)
+
+    -- Wait 3 seconds, clean up loader, and launch main UI
+    task.spawn(function()
+        task.wait(3)
+        connection:Disconnect()
+        
+        -- Fade out effect
+        for i = 0, 1, 0.1 do
+            Background.BackgroundTransparency = i
+            RgbText.TextTransparency = i
+            LoadingSub.TextTransparency = i
+            task.wait(0.05)
+        end
+        
+        LoadGui:Destroy()
+        callback() -- Calls the main UI function
+    end)
+end
+
+-- ==========================================
+-- 2. Main Server Hopper UI & Logic
+-- ==========================================
+local function createMainUI()
     local existingUI = game.CoreGui:FindFirstChild("ServerHopperGui")
     if existingUI then existingUI:Destroy() end
 
@@ -14,7 +77,6 @@ local function createUI()
     ScreenGui.Name = "ServerHopperGui"
     ScreenGui.Parent = game.CoreGui
 
-    -- Made the UI slightly taller to fit the list nicely
     local MainFrame = Instance.new("Frame")
     MainFrame.Size = UDim2.new(0, 340, 0, 260)
     MainFrame.Position = UDim2.new(0.5, -170, 0.4, -130)
@@ -47,14 +109,12 @@ local function createUI()
     Title.TextXAlignment = Enum.TextXAlignment.Left
     Title.Parent = MainFrame
 
-    -- Container for main buttons (Arabic/English, Low/Random)
     local ButtonContainer = Instance.new("Frame")
     ButtonContainer.Size = UDim2.new(1, 0, 0.7, 0)
     ButtonContainer.Position = UDim2.new(0, 0, 0.2, 0)
     ButtonContainer.BackgroundTransparency = 1
     ButtonContainer.Parent = MainFrame
 
-    -- Container for the Server List
     local ListContainer = Instance.new("Frame")
     ListContainer.Size = UDim2.new(1, 0, 0.7, 0)
     ListContainer.Position = UDim2.new(0, 0, 0.2, 0)
@@ -132,8 +192,12 @@ local function createUI()
             if string.find(response, "429") or string.find(response, "Too Many Requests") then
                 return nil, "429"
             end
-            local decoded = HttpService:JSONDecode(response)
-            return decoded.data or {}, decoded.nextPageCursor
+            
+            -- Added pcall to JSONDecode to prevent crashes on bad responses
+            local decodeSuccess, decoded = pcall(function() return HttpService:JSONDecode(response) end)
+            if decodeSuccess then
+                return decoded.data or {}, decoded.nextPageCursor
+            end
         end
         return nil, "Error"
     end
@@ -154,9 +218,8 @@ local function createUI()
         if isFetching then return end
         isFetching = true
         
-        LoadingLabel.Text = lang == "Arabic" and "جاري البحث عن السيرفرات..." or "Finding servers..."
+        LoadingLabel.Text = lang == "Arabic" and "البحث عن سيرفرات..." or "Finding servers..."
         
-        -- Clear old items
         for _, child in ipairs(ScrollingFrame:GetChildren()) do
             if child:IsA("TextButton") then child:Destroy() end
         end
@@ -164,13 +227,15 @@ local function createUI()
         local cursor = nil
         local foundServers = {}
         
-        -- Fetch up to 4 pages to find populated but low servers
-        for i = 1, 4 do 
+        -- FIX: Increased page limit from 4 to 20 to bypass "0 player ghost servers"
+        for i = 1, 20 do 
+            LoadingLabel.Text = (lang == "Arabic" and "جاري البحث في الصفحة " or "Scanning page ") .. tostring(i) .. "..."
+            
             local servers, nextCursor = fetchServers(cursor)
             
             if nextCursor == "429" then
                 LoadingLabel.Text = lang == "Arabic" and "تم الحظر مؤقتاً! انتظر..." or "Rate Limited! Waiting..."
-                task.wait(2.5)
+                task.wait(3)
                 continue
             elseif not servers then
                 break
@@ -182,23 +247,21 @@ local function createUI()
                 end
             end
 
-            if #foundServers >= 15 then break end -- Stop when we have 15 good servers
+            if #foundServers >= 10 then break end -- Stop when we have enough good servers
             
             cursor = nextCursor
             if not cursor then break end
-            task.wait(1.5)
+            task.wait(1.2) -- Safe delay to avoid getting rate-limited
         end
 
-        -- Ensure they are sorted from lowest to highest
         table.sort(foundServers, function(a, b) return a.playing < b.playing end)
 
         if #foundServers == 0 then
-            LoadingLabel.Text = lang == "Arabic" and "لم يتم العثور على سيرفرات!" or "No servers found!"
+            LoadingLabel.Text = lang == "Arabic" and "لم يتم العثور على سيرفرات صالحة!" or "No valid servers found!"
             isFetching = false
             return
         end
 
-        -- Build UI List
         for index, server in ipairs(foundServers) do
             local ServerBtn = Instance.new("TextButton")
             ServerBtn.Size = UDim2.new(1, -10, 0, 35)
@@ -232,7 +295,6 @@ local function createUI()
         Option2Btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
         Option2Btn.Text = language == "Arabic" and "سيرفر عشوائي" or "Random Server"
 
-        -- Clear old connections
         local newOpt1 = Option1Btn:Clone()
         Option1Btn:Destroy()
         Option1Btn = newOpt1
@@ -252,14 +314,22 @@ local function createUI()
             isFetching = true
             LoadingLabel.Text = language == "Arabic" and "جلب سيرفر عشوائي..." or "Fetching random server..."
             
-            local servers = fetchServers(nil)
+            local cursor = nil
             local valid = {}
-            if servers then
-                for _, s in ipairs(servers) do
-                    if s.id ~= JOB_ID and s.playing > 0 and s.playing < s.maxPlayers then
-                        table.insert(valid, s)
+            
+            -- Scan up to 5 pages for random servers to ensure we skip empty ones
+            for i = 1, 5 do
+                local servers, nextCursor = fetchServers(cursor)
+                if servers then
+                    for _, s in ipairs(servers) do
+                        if s.id ~= JOB_ID and s.playing > 0 and s.playing < s.maxPlayers then
+                            table.insert(valid, s)
+                        end
                     end
                 end
+                cursor = nextCursor
+                if not cursor or #valid >= 20 then break end
+                task.wait(1)
             end
 
             if #valid > 0 then
@@ -271,7 +341,6 @@ local function createUI()
         end)
     end
 
-    -- Language Setup
     Option1Btn.MouseButton1Click:Connect(function() showServerButtons("Arabic") end)
     Option2Btn.MouseButton1Click:Connect(function() showServerButtons("English") end)
 
@@ -282,4 +351,7 @@ local function createUI()
     end)
 end
 
-createUI()
+-- ==========================================
+-- 3. Execute script flow
+-- ==========================================
+showLoadingScreen(createMainUI)
