@@ -16,35 +16,37 @@ local function showLoadingScreen(callback)
     LoadGui.Parent = game.CoreGui
     LoadGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
+    -- Made exact same size, position, and shape as the main UI
     local Background = Instance.new("Frame")
-    Background.Size = UDim2.new(1, 0, 1, 0)
+    Background.Size = UDim2.new(0, 340, 0, 260)
+    Background.Position = UDim2.new(0.5, -170, 0.4, -130)
     Background.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
     Background.BorderSizePixel = 0
     Background.Parent = LoadGui
+    Instance.new("UICorner", Background).CornerRadius = UDim.new(0, 8)
 
     local RgbText = Instance.new("TextLabel")
-    RgbText.Size = UDim2.new(0, 400, 0, 100)
-    RgbText.Position = UDim2.new(0.5, -200, 0.5, -50)
+    RgbText.Size = UDim2.new(1, 0, 0, 50)
+    RgbText.Position = UDim2.new(0, 0, 0.5, -40)
     RgbText.BackgroundTransparency = 1
     RgbText.Text = "Raii Scripts"
     RgbText.Font = Enum.Font.GothamBlack
-    RgbText.TextSize = 50
+    RgbText.TextSize = 35 -- Resized to fit nicely in the box
     RgbText.Parent = Background
 
     local LoadingSub = Instance.new("TextLabel")
-    LoadingSub.Size = UDim2.new(0, 400, 0, 30)
-    LoadingSub.Position = UDim2.new(0.5, -200, 0.5, 30)
+    LoadingSub.Size = UDim2.new(1, 0, 0, 30)
+    LoadingSub.Position = UDim2.new(0, 0, 0.5, 20)
     LoadingSub.BackgroundTransparency = 1
     LoadingSub.Text = "Loading Server Hopper..."
     LoadingSub.TextColor3 = Color3.fromRGB(150, 150, 150)
     LoadingSub.Font = Enum.Font.GothamMedium
-    LoadingSub.TextSize = 18
+    LoadingSub.TextSize = 14
     LoadingSub.Parent = Background
 
     -- RGB Animation Loop
     local connection
     connection = RunService.RenderStepped:Connect(function()
-        -- Smoothly cycles through RGB colors using tick()
         RgbText.TextColor3 = Color3.fromHSV(tick() % 3 / 3, 1, 1)
     end)
 
@@ -62,7 +64,7 @@ local function showLoadingScreen(callback)
         end
         
         LoadGui:Destroy()
-        callback() -- Calls the main UI function
+        callback() 
     end)
 end
 
@@ -193,7 +195,6 @@ local function createMainUI()
                 return nil, "429"
             end
             
-            -- Added pcall to JSONDecode to prevent crashes on bad responses
             local decodeSuccess, decoded = pcall(function() return HttpService:JSONDecode(response) end)
             if decodeSuccess then
                 return decoded.data or {}, decoded.nextPageCursor
@@ -227,7 +228,6 @@ local function createMainUI()
         local cursor = nil
         local foundServers = {}
         
-        -- FIX: Increased page limit from 4 to 20 to bypass "0 player ghost servers"
         for i = 1, 20 do 
             LoadingLabel.Text = (lang == "Arabic" and "جاري البحث في الصفحة " or "Scanning page ") .. tostring(i) .. "..."
             
@@ -247,11 +247,11 @@ local function createMainUI()
                 end
             end
 
-            if #foundServers >= 10 then break end -- Stop when we have enough good servers
+            if #foundServers >= 10 then break end 
             
             cursor = nextCursor
             if not cursor then break end
-            task.wait(1.2) -- Safe delay to avoid getting rate-limited
+            task.wait(1.2)
         end
 
         table.sort(foundServers, function(a, b) return a.playing < b.playing end)
@@ -317,7 +317,6 @@ local function createMainUI()
             local cursor = nil
             local valid = {}
             
-            -- Scan up to 5 pages for random servers to ensure we skip empty ones
             for i = 1, 5 do
                 local servers, nextCursor = fetchServers(cursor)
                 if servers then
